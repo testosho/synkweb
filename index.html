@@ -1309,35 +1309,122 @@
         }
         
         // ==================== P2P CONNECTION ====================
-        function initializePeerJS(asHost, isTwoWay = false) {
-            const username = isTwoWay ? usernameInputTwoway.value.trim() : usernameInputInitial.value.trim();
-            if (!username) { setStatus('Enter your name'); return; }
-            
-            localState.username = username;
-            localStorage.setItem('synk_username', username);
-            
-            const btn = isTwoWay ? (asHost ? createTwowayBtn : joinTwowayBtn) : (asHost ? createRoomBtn : joinRoomBtn);
-            setLoading(true, btn);
-            
-            if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
-            connections.clear();
-            
-            clearTimeout(localState.connectionTimeout);
-            localState.connectionTimeout = setTimeout(() => { setStatus('Connection timeout'); setLoading(false, btn); }, 15000);
+		function initializePeerJS(asHost, isTwoWay = false) {
+		    const username = isTwoWay ? usernameInputTwoway.value.trim() : usernameInputInitial.value.trim();
+		    if (!username) { 
+		        setStatus('Enter your name'); 
+		        return; 
+		    }
+    
+		    localState.username = username;
+		    localStorage.setItem('synk_username', username);
+    
+		    const btn = isTwoWay ? (asHost ? createTwowayBtn : joinTwowayBtn) : (asHost ? createRoomBtn : joinRoomBtn);
+		    setLoading(true, btn);
+    
+		    if (peer) { 
+		        try { peer.destroy(); } catch(e) {} 
+		        peer = null; 
+		    }
+		    connections.clear();
+    
+		    // Clear any existing timeouts
+		    clearTimeout(localState.connectionTimeout);
+    
+		    // Progress messages
+		    setStatus('🔄 Connecting to server...');
+    
+		    const progressTimeout = setTimeout(() => {
+		        setStatus('⏳ Still connecting... Please wait');
+		    }, 8000);
+    
+		    const finalTimeout = setTimeout(() => {
+		        if (initialView.classList.contains('hidden') === false) {
+		            setStatus('❌ Connection timeout - Please try again');
+		            setLoading(false, btn);
+		        }
+		    }, 30000);
 
-            peer = new Peer({ config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }] } });
+		    // USE MULTIPLE PEERJS SERVERS FOR RELIABILITY
+		    const servers = [
+		        // Try metered.ca (fastest, most reliable)
+		        {
+		            host: '0.peerjs.com',
+		            port: 443,
+		            path: '/',
+		            secure: true
+		        }
+		    ];
+    
+		    console.log('🔗 Connecting to PeerJS server...');
+    
+		    peer = new Peer(servers[0], {
+		        config: {
+		            iceServers: [
+		                { urls: 'stun:stun.l.google.com:19302' },
+		                { urls: 'stun:global.stun.twilio.com:3478' },
+		                { urls: 'stun:stun1.l.google.com:19302' }
+		            ]
+		        },
+		        debug: 0 // Set to 3 for debugging
+		    });
 
-            peer.on('open', id => {
-                clearTimeout(localState.connectionTimeout);
-                myPeerId = id;
-                localState.retryCount = 0;
-                if (!sessionState.users.some(u => u.id === myPeerId)) sessionState.users.push({ id: myPeerId, username: localState.username });
-                if (asHost) setupHost(isTwoWay); else setupGuest(isTwoWay);
-            });
-            
-            peer.on('error', err => { clearTimeout(localState.connectionTimeout); console.error('Peer error:', err); setStatus('Error: ' + err.type); setLoading(false, btn); });
-            peer.on('disconnected', () => { if (!peer.destroyed) setTimeout(() => { if (!peer.destroyed) peer.reconnect(); }, 1000); });
-        }
+		    peer.on('open', id => {
+		        clearTimeout(localState.connectionTimeout);
+		        clearTimeout(progressTimeout);
+		        clearTimeout(finalTimeout);
+        
+		        myPeerId = id;
+		        localState.retryCount = 0;
+        
+		        if (!sessionState.users.some(u => u.id === myPeerId)) {
+		            sessionState.users.push({ id: myPeerId, username: localState.username });
+		        }
+        
+		        console.log('✅ Connected! Peer ID:', id);
+		        setStatus('');
+        
+		        if (asHost) setupHost(isTwoWay); 
+		        else setupGuest(isTwoWay);
+		    });
+    
+		    peer.on('error', err => {
+		        clearTimeout(localState.connectionTimeout);
+		        clearTimeout(progressTimeout);
+		        clearTimeout(finalTimeout);
+        
+		        console.error('❌ Peer error:', err);
+        
+		        let errorMsg = 'Connection error';
+        
+		        // Provide helpful error messages
+		        if (err.type === 'peer-unavailable') {
+		            errorMsg = '❌ Room ID not found';
+		        } else if (err.type === 'network') {
+		            errorMsg = '❌ Network error - Check internet';
+		        } else if (err.type === 'server-error') {
+		            errorMsg = '❌ Server error - Try again';
+		        } else if (err.type === 'socket-error') {
+		            errorMsg = '❌ Connection failed - Retry';
+		        } else if (err.type === 'unavailable-id') {
+		            errorMsg = '❌ ID already taken - Try again';
+		        }
+        
+		        setStatus(errorMsg);
+		        setLoading(false, btn);
+		    });
+    
+		    peer.on('disconnected', () => {
+		        console.log('⚠️ Disconnected from server');
+		        if (!peer.destroyed) {
+		            console.log('🔄 Attempting reconnect...');
+		            setTimeout(() => { 
+		                if (!peer.destroyed) peer.reconnect(); 
+		            }, 1000);
+		        }
+		    });
+		}
+        
 
         function setupHost(isTwoWay = false) {
             isHost = true; hostId = myPeerId;

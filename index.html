@@ -1,0 +1,1603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#2563eb">
+    <title>SYNK - Watch Together</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet">
+    <style>
+        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            overscroll-behavior: none;
+            touch-action: pan-y;
+        }
+        
+        .brand-logo {
+            font-family: 'Audiowide', cursive;
+            letter-spacing: 0.1em;
+            font-size: 3.5rem;
+            color: #ffffff;
+            text-shadow: 
+                0 0 10px rgba(59, 130, 246, 0.8),
+                0 0 20px rgba(59, 130, 246, 0.6),
+                0 0 30px rgba(59, 130, 246, 0.4),
+                0 0 40px rgba(59, 130, 246, 0.3);
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+        
+        @keyframes glow {
+            from { text-shadow: 0 0 10px rgba(59, 130, 246, 0.8), 0 0 20px rgba(59, 130, 246, 0.6); }
+            to { text-shadow: 0 0 20px rgba(59, 130, 246, 1), 0 0 30px rgba(59, 130, 246, 0.8), 0 0 40px rgba(59, 130, 246, 0.6); }
+        }
+        
+        .brand-logo-small {
+            font-family: 'Audiowide', cursive;
+            letter-spacing: 0.05em;
+            color: #2563eb;
+        }
+        
+        .dark .brand-logo { text-shadow: 0 0 10px rgba(96, 165, 250, 0.9), 0 0 20px rgba(96, 165, 250, 0.7); }
+        .dark .brand-logo-small { color: #60a5fa; }
+        
+        .player-container { 
+            width: 100%; 
+            aspect-ratio: 16 / 9; 
+            border-radius: 0.5rem; 
+            background-color: #000; 
+            position: relative; 
+            overflow: hidden; 
+        }
+        
+        .audio-visualizer { background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%); }
+        
+        .torrent-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+            max-width: 80%;
+        }
+        
+        .chat-message, .system-message { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .lds-ring { display: inline-block; position: relative; width: 20px; height: 20px; }
+        .lds-ring div { 
+            box-sizing: border-box; display: block; position: absolute; 
+            width: 16px; height: 16px; margin: 2px; 
+            border: 2px solid #fff; border-radius: 50%; 
+            animation: lds-ring 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite; 
+            border-color: #fff transparent transparent transparent; 
+        }
+        .lds-ring div:nth-child(1) { animation-delay: -0.45s; }
+        .lds-ring div:nth-child(2) { animation-delay: -0.3s; }
+        .lds-ring div:nth-child(3) { animation-delay: -0.15s; }
+        @keyframes lds-ring { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .mode-card { transition: all 0.3s ease; cursor: pointer; }
+        .mode-card:hover { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+        .mode-card:active { transform: scale(0.98); }
+        
+        button:active { transform: scale(0.95); }
+        
+        .user-avatar {
+            width: 32px; height: 32px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 14px; color: white;
+        }
+        
+        .file-link {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 8px 16px; border-radius: 8px;
+            text-decoration: none; font-weight: 600; font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .file-link:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+        
+        @media (max-width: 640px) {
+            .brand-logo { font-size: 2.5rem; }
+            #chat-messages { height: 50vh !important; max-height: 300px; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white flex items-center justify-center min-h-screen p-4">
+
+    <div id="app-container" class="w-full max-w-6xl mx-auto">
+
+        <!-- INITIAL VIEW -->
+        <div id="initial-view" class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-2xl mx-auto">
+            <h1 class="brand-logo text-center mb-2">SynK</h1>
+            <p class="text-gray-600 dark:text-gray-400 mb-8 text-center text-lg">Watch & Listen Together, Anywhere</p>
+            
+            <!-- Mode Selection -->
+            <div id="mode-selection" class="space-y-4 mb-6">
+                <p class="font-bold text-xl text-center mb-6">Choose Your Mode</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div id="normal-mode-card" class="mode-card bg-gradient-to-br from-blue-500 to-blue-700 text-white p-8 rounded-xl shadow-lg">
+                        <div class="text-center">
+                            <svg class="w-16 h-16 mx-auto mb-4" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path></svg>
+                            <h3 class="text-2xl font-bold mb-2">Watch Party</h3>
+                            <p class="text-sm opacity-90">Host controls, unlimited viewers</p>
+                        </div>
+                    </div>
+                    
+                    <div id="twoway-mode-card" class="mode-card bg-gradient-to-br from-pink-500 to-red-600 text-white p-8 rounded-xl shadow-lg">
+                        <div class="text-center">
+                            <svg class="w-16 h-16 mx-auto mb-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"></path></svg>
+                            <h3 class="text-2xl font-bold mb-2">2 Way Sync</h3>
+                            <p class="text-sm opacity-90">Both control, perfect sync</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Normal Mode Form -->
+            <div id="normal-mode-form" class="hidden space-y-4">
+                <button id="back-to-mode-btn" class="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                    Back
+                </button>
+                <input type="text" id="username-input-initial" placeholder="Enter Your Name" class="w-full bg-gray-100 dark:bg-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <hr class="border-gray-300 dark:border-gray-600">
+                <p class="font-bold text-xl text-center">Create Room</p>
+                <input type="text" id="session-title-input" placeholder="Session Title" class="w-full bg-gray-100 dark:bg-gray-700 rounded-xl px-4 py-3">
+                <button id="create-room-btn" class="w-full bg-gradient-to-r from-green-600 to-green-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg">Create Room</button>
+                <hr class="border-gray-300 dark:border-gray-600">
+                <p class="font-bold text-xl text-center">Join Room</p>
+                <input type="text" id="join-room-id-input" placeholder="Enter Room ID" class="w-full bg-gray-100 dark:bg-gray-700 rounded-xl px-4 py-3">
+                <button id="join-room-btn" class="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg">Join Room</button>
+            </div>
+            
+            <!-- 2 Way Form -->
+            <div id="twoway-mode-form" class="hidden space-y-4">
+                <button id="back-to-mode-btn-2" class="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                    Back
+                </button>
+                <input type="text" id="username-input-twoway" placeholder="Enter Your Name" class="w-full bg-gray-100 dark:bg-gray-700 rounded-xl px-4 py-3">
+                <hr class="border-gray-300 dark:border-gray-600">
+                <p class="font-bold text-xl text-center text-pink-600">💕 2 Way Sync</p>
+                <input type="text" id="session-title-twoway" placeholder="Session Title" class="w-full bg-gray-100 dark:bg-gray-700 rounded-xl px-4 py-3">
+                <button id="create-twoway-btn" class="w-full bg-gradient-to-r from-pink-600 to-red-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg">Create 2-Way Room</button>
+                <hr class="border-gray-300 dark:border-gray-600">
+                <input type="text" id="join-twoway-id-input" placeholder="Partner's Room ID" class="w-full bg-gray-100 dark:bg-gray-700 rounded-xl px-4 py-3">
+                <button id="join-twoway-btn" class="w-full bg-gradient-to-r from-red-600 to-pink-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg">Join Partner</button>
+            </div>
+            
+            <p id="status-text" class="text-sm text-center text-red-500 mt-4 h-5"></p>
+            <p class="text-xs text-center text-gray-400 mt-8">SYNK v14.0 • WebTor SDK • Thosho Tech</p>
+        </div>
+
+        <!-- MAIN VIEW -->
+        <div id="main-view" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-4">
+            
+            <!-- Left: Player -->
+            <div class="lg:col-span-2 space-y-4">
+                
+                <!-- Header -->
+                <header class="p-4 bg-white dark:bg-gray-800 rounded-xl shadow-lg flex justify-between items-center">
+                    <div class="flex items-center gap-4">
+                        <h1 class="brand-logo-small text-2xl">SYNK</h1>
+                        <div class="border-l border-gray-300 pl-4">
+                            <div class="flex items-center gap-2">
+                                <h2 id="session-title-display" class="text-lg font-bold"></h2>
+                                <span id="twoway-badge" class="hidden text-xs bg-pink-500 text-white px-2 py-1 rounded-full">💕</span>
+                            </div>
+                            <div class="flex items-center text-xs gap-2">
+                                <span class="text-gray-500">ID:</span>
+                                <span id="room-id-display" class="font-mono text-blue-600"></span>
+                                <button id="copy-room-id-btn" class="text-gray-500 hover:text-blue-600">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"></path><path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z"></path></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <button id="leave-room-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg">Leave</button>
+                </header>
+                
+                <!-- Controls -->
+                <div id="host-controls" class="hidden bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg space-y-3">
+                    <select id="media-type-select" class="w-full bg-gray-100 dark:bg-gray-700 rounded-lg px-3 py-2">
+                        <option value="auto">🔍 Auto-Detect</option>
+                        <option value="youtube">▶️ YouTube</option>
+                        <option value="video">🎬 Video (MP4/WebM/MKV)</option>
+                        <option value="audio">🎵 Audio (MP3/WAV)</option>
+                        <option value="stream">📡 Stream (M3U8/HLS)</option>
+                        <option value="torrent">🔥 Torrent (Magnet)</option>
+                        <option value="iframe">🌐 Website/Doc</option>
+                        <option value="image">🖼️ Image</option>
+                    </select>
+                    
+                    <div class="flex gap-2">
+                        <input type="text" id="video-url-input" placeholder="Paste URL or Magnet Link..." class="flex-grow bg-gray-100 dark:bg-gray-700 rounded-lg px-4 py-2 text-sm">
+                        <button id="load-video-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">Load</button>
+                    </div>
+                    
+                    <div class="text-xs text-gray-500 bg-gray-50 dark:bg-gray-700/50 p-2 rounded">
+                        💡 YouTube, MP4, MP3, M3U8, Magnet Links (WebTor SDK), Websites, Images
+                    </div>
+                </div>
+                
+                <!-- Player Container -->
+                <div id="video-container" class="player-container bg-black rounded-xl shadow-2xl">
+                    <div id="youtube-player-container" class="hidden w-full h-full">
+                        <div id="player" class="w-full h-full"></div>
+                    </div>
+                    
+                    <div id="html5-video-container" class="hidden w-full h-full relative">
+                        <video id="html5-video" controls playsinline class="w-full h-full"></video>
+                        <div id="torrent-info" class="torrent-info hidden"></div>
+                    </div>
+                    
+                    <div id="html5-audio-container" class="hidden w-full h-full audio-visualizer">
+                        <div class="flex items-center justify-center h-full">
+                            <div class="text-center px-4">
+                                <div class="text-8xl mb-6 animate-pulse">🎵</div>
+                                <p id="audio-title" class="text-white text-2xl font-bold mb-6"></p>
+                                <audio id="html5-audio" controls class="w-full max-w-md shadow-2xl rounded-lg"></audio>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <iframe id="player-iframe" class="hidden w-full h-full" allow="autoplay; fullscreen" allowfullscreen></iframe>
+                    <img id="player-image" class="hidden w-full h-full object-contain">
+                    
+                    <div id="empty-state" class="flex items-center justify-center h-full text-white text-xl">
+                        No media loaded
+                    </div>
+                </div>
+                
+                <!-- SYNC BUTTON -->
+                <div class="flex justify-center">
+                    <button id="sync-button" class="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg transition-all">
+                        🔄 SYNC NOW
+                    </button>
+                </div>
+                
+            </div>
+            
+            <!-- Right: Chat -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 h-[700px] flex flex-col">
+                <div class="flex justify-between items-center mb-3 pb-3 border-b border-gray-200 dark:border-gray-700">
+                    <h2 class="text-lg font-bold">Chat</h2>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-mono px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded" id="host-time-display">--:--</span>
+                        <button id="viewers-btn" class="text-xs bg-gray-200 dark:bg-gray-700 px-3 py-1.5 rounded-lg">
+                            👥 <span id="user-count">0</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="chat-messages" class="flex-1 overflow-y-auto mb-3 pr-2 space-y-2"></div>
+                
+                <div class="flex gap-2">
+                    <input type="file" id="file-input-chat" class="hidden" accept="video/*,audio/*,image/*,application/pdf,.doc,.docx,.txt">
+                    <button id="attach-file-btn" class="px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
+                        </svg>
+                    </button>
+                    <input type="text" id="chat-input" placeholder="Say something..." class="flex-grow bg-gray-100 dark:bg-gray-700 rounded-lg px-4 py-2 text-sm">
+                    <button id="send-chat-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 rounded-lg">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path></svg>
+                    </button>
+                </div>
+                
+                <div id="file-progress-chat" class="hidden mt-2">
+                    <div class="bg-gray-200 rounded-full h-2">
+                        <div id="file-progress-bar-chat" class="bg-purple-600 h-2 rounded-full transition-all" style="width: 0%"></div>
+                    </div>
+                    <p id="file-status-chat" class="text-xs text-gray-600 mt-1"></p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Viewers Modal -->
+        <div id="viewers-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6 w-full max-w-md">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold">Who's Here</h3>
+                    <button id="close-modal-btn" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button>
+                </div>
+                <ul id="modal-user-list" class="space-y-3"></ul>
+            </div>
+        </div>
+
+        <!-- Toast -->
+        <div id="toast" class="fixed bottom-5 right-5 bg-blue-600 text-white py-3 px-5 rounded-xl shadow-2xl opacity-0 translate-y-3 transition-all duration-300 z-50 font-semibold"></div>
+    </div>
+
+    <script>
+        console.log('🚀 SYNK v14.0 - WebTor SDK Edition');
+        
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+        }
+        
+        // ==================== STATE ====================
+        let peer, isHost = false, hostId = null, myPeerId = null;
+        let connections = new Map();
+        let sessionState = { 
+            title: "Watch Party", 
+            videoId: null, 
+            mediaType: 'youtube',
+            hostTimestamp: 0, 
+            isPlaying: false, 
+            isTwoWay: false, 
+            users: [], 
+            chat: []
+        };
+        
+        let localState = { 
+            username: "", 
+            connectionTimeout: null, 
+            ignoreNextStateChange: false, 
+            retryCount: 0, 
+            hostConnection: null, 
+            lastBroadcastTime: 0, 
+            broadcastCooldown: 1000,
+            sharedFiles: new Map(),
+            webtorLoaded: false
+        };
+        
+        const loadingSpinner = `<div class="lds-ring"><div></div><div></div><div></div><div></div></div>`;
+        let player, ytReady = false, playerReady = false;
+        let html5Video = null, html5Audio = null, hls = null;
+        let currentMediaType = 'youtube';
+        let prevTime = 0, prevState = -1;
+        let syncCheckInterval = null;
+
+        // ==================== DOM ====================
+        const $ = (id) => document.getElementById(id);
+        const initialView = $('initial-view'), mainView = $('main-view'), statusText = $('status-text');
+        const modeSelection = $('mode-selection'), normalModeForm = $('normal-mode-form'), twowayModeForm = $('twoway-mode-form');
+        const normalModeCard = $('normal-mode-card'), twowayModeCard = $('twoway-mode-card');
+        const backToModeBtn = $('back-to-mode-btn'), backToModeBtn2 = $('back-to-mode-btn-2');
+        const usernameInputInitial = $('username-input-initial'), usernameInputTwoway = $('username-input-twoway');
+        const createRoomBtn = $('create-room-btn'), joinRoomBtn = $('join-room-btn'), leaveRoomBtn = $('leave-room-btn');
+        const createTwowayBtn = $('create-twoway-btn'), joinTwowayBtn = $('join-twoway-btn');
+        const sessionTitleInput = $('session-title-input'), sessionTitleTwoway = $('session-title-twoway');
+        const joinRoomIdInput = $('join-room-id-input'), joinTwowayIdInput = $('join-twoway-id-input');
+        const sessionTitleDisplay = $('session-title-display'), roomIdDisplay = $('room-id-display'), twowayBadge = $('twoway-badge');
+        const hostControls = $('host-controls'), videoUrlInput = $('video-url-input'), loadVideoBtn = $('load-video-btn');
+        const userCount = $('user-count'), chatMessages = $('chat-messages'), chatInput = $('chat-input'), sendChatBtn = $('send-chat-btn');
+        const viewersBtn = $('viewers-btn'), viewersModal = $('viewers-modal'), closeModalBtn = $('close-modal-btn'), modalUserList = $('modal-user-list');
+        const hostTimeDisplay = $('host-time-display');
+        const toast = $('toast');
+        const copyRoomIdBtn = $('copy-room-id-btn');
+        const mediaTypeSelect = $('media-type-select');
+        const syncButton = $('sync-button');
+        const torrentInfo = $('torrent-info');
+        const attachFileBtn = $('attach-file-btn');
+        const fileInputChat = $('file-input-chat');
+        const fileProgressChat = $('file-progress-chat');
+        const fileProgressBarChat = $('file-progress-bar-chat');
+        const fileStatusChat = $('file-status-chat');
+        
+        // ==================== UTILITIES ====================
+        function showToast(message) { 
+            toast.textContent = message; 
+            toast.classList.remove('opacity-0', 'translate-y-3'); 
+            setTimeout(() => toast.classList.add('opacity-0', 'translate-y-3'), 3000); 
+        }
+        
+        function formatTime(totalSeconds) {
+            if (typeof totalSeconds !== 'number' || isNaN(totalSeconds)) return '--:--';
+            totalSeconds = Math.floor(totalSeconds);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+        
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+        
+        function setStatus(text) { statusText.textContent = text; }
+        function setLoading(isLoading, button) { 
+            button.disabled = isLoading; 
+            const originalText = button.getAttribute('data-original-text') || button.textContent;
+            if (!button.getAttribute('data-original-text')) {
+                button.setAttribute('data-original-text', originalText);
+            }
+            button.innerHTML = isLoading ? loadingSpinner : originalText; 
+        }
+        
+        function getAvatarColor(username) {
+            const colors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500'];
+            const index = username.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+            return colors[index % colors.length];
+        }
+        
+        function getAvatarInitial(username) { return username[0].toUpperCase(); }
+        
+        // ==================== MODE SELECTION ====================
+        normalModeCard.addEventListener('click', () => {
+            modeSelection.classList.add('hidden');
+            normalModeForm.classList.remove('hidden');
+        });
+        
+        twowayModeCard.addEventListener('click', () => {
+            modeSelection.classList.add('hidden');
+            twowayModeForm.classList.remove('hidden');
+        });
+        
+        backToModeBtn.addEventListener('click', () => {
+            normalModeForm.classList.add('hidden');
+            modeSelection.classList.remove('hidden');
+            setStatus('');
+        });
+        
+        backToModeBtn2.addEventListener('click', () => {
+            twowayModeForm.classList.add('hidden');
+            modeSelection.classList.remove('hidden');
+            setStatus('');
+        });
+        
+        // ==================== YOUTUBE API ====================
+        var tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        document.head.appendChild(tag);
+
+        window.onYouTubeIframeAPIReady = function() {
+            ytReady = true;
+            console.log('✅ YouTube API Ready');
+        };
+
+        // ==================== MEDIA DETECTION ====================
+        function detectMediaType(url) {
+            if (!url) return 'youtube';
+            if (url.startsWith('magnet:')) return 'torrent';
+            if (url.includes('youtube.com') || url.includes('youtu.be') || (url.length === 11 && !url.includes('.'))) return 'youtube';
+            if (url.match(/\.(mp3|wav|ogg|aac|m4a)(\?.*)?$/i)) return 'audio';
+            if (url.match(/\.(m3u8|mpd)(\?.*)?$/i)) return 'stream';
+            if (url.match(/\.(mp4|webm|mkv|avi|mov)(\?.*)?$/i)) return 'video';
+            if (url.match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i)) return 'image';
+            return 'iframe';
+        }
+        
+        function extractYouTubeId(url) {
+            if (url.length === 11 && !url.includes('/') && !url.includes('.')) return url;
+            try {
+                const urlObj = new URL(url);
+                if (urlObj.hostname.includes('youtube.com') && urlObj.searchParams.has('v')) {
+                    return urlObj.searchParams.get('v');
+                }
+                if (urlObj.hostname === 'youtu.be') {
+                    return urlObj.pathname.slice(1);
+                }
+            } catch (e) {
+                return url.length === 11 ? url : null;
+            }
+            return null;
+        }
+        
+        // ==================== PLAYER MANAGEMENT ====================
+		function hideAllPlayers() {
+		    // Stop YouTube player
+		    if (player) {
+		        try { 
+		            player.stopVideo(); // IMPORTANT: Stop playback
+		            player.destroy(); 
+		        } catch(e) {}
+		        player = null;
+		    }
+    
+		    // Stop HTML5 Video
+		    if (html5Video) {
+		        html5Video.pause();
+		        html5Video.src = '';
+		        html5Video.load(); // Force reload to clear
+		    }
+    
+		    // Stop HTML5 Audio
+		    if (html5Audio) {
+		        html5Audio.pause();
+		        html5Audio.src = '';
+		        html5Audio.load();
+		    }
+    
+		    // Stop HLS
+		    if (hls) {
+		        hls.destroy();
+		        hls = null;
+		    }
+    
+		    // Clear iframe
+		    const iframe = $('player-iframe');
+		    if (iframe) {
+		        iframe.src = 'about:blank'; // Kill iframe content
+		    }
+    
+		    // Hide all containers
+		    $('youtube-player-container').classList.add('hidden');
+		    $('html5-video-container').classList.add('hidden');
+		    $('html5-audio-container').classList.add('hidden');
+		    $('player-iframe').classList.add('hidden');
+		    $('player-image').classList.add('hidden');
+		    $('empty-state').classList.add('hidden');
+		    torrentInfo.classList.add('hidden');
+    
+		    // Reset player state
+		    playerReady = false;
+		}
+      
+        
+        function createPlayer(mediaUrl, mediaType = 'auto') {
+            hideAllPlayers();
+            
+            if (player) {
+                try { player.destroy(); } catch(e) {}
+                player = null;
+            }
+            if (html5Video) {
+                html5Video.pause();
+                html5Video.src = '';
+            }
+            if (html5Audio) {
+                html5Audio.pause();
+                html5Audio.src = '';
+            }
+            if (hls) {
+                hls.destroy();
+                hls = null;
+            }
+            
+            if (mediaType === 'auto') {
+                mediaType = detectMediaType(mediaUrl);
+            }
+            
+            currentMediaType = mediaType;
+            sessionState.mediaType = mediaType;
+            
+            console.log('📺 Loading:', mediaType, mediaUrl);
+            
+            switch(mediaType) {
+                case 'youtube':
+                    loadYouTubePlayer(mediaUrl);
+                    break;
+                case 'video':
+                    loadHTML5Video(mediaUrl);
+                    break;
+                case 'audio':
+                    loadHTML5Audio(mediaUrl);
+                    break;
+                case 'stream':
+                    loadStreamingVideo(mediaUrl);
+                    break;
+                case 'torrent':
+                    loadTorrent(mediaUrl);
+                    break;
+                case 'iframe':
+                    loadIframe(mediaUrl);
+                    break;
+                case 'image':
+                    loadImage(mediaUrl);
+                    break;
+            }
+        }
+        
+        function loadYouTubePlayer(videoId) {
+            if (!ytReady) {
+                setTimeout(() => loadYouTubePlayer(videoId), 100);
+                return;
+            }
+            
+            $('youtube-player-container').classList.remove('hidden');
+            
+            player = new YT.Player('player', {
+                height: '100%',
+                width: '100%',
+                videoId: videoId,
+                playerVars: {
+                    'playsinline': 1,
+                    'controls': 1,
+                    'modestbranding': 1,
+                    'rel': 0
+                },
+                events: {
+                    'onReady': onPlayerReady,
+                    'onStateChange': onPlayerStateChange
+                }
+            });
+            
+            playerReady = false;
+        }
+        
+		function loadHTML5Video(url) {
+		    $('html5-video-container').classList.remove('hidden');
+		    html5Video = $('html5-video');
+		    html5Video.src = url;
+		    html5Video.load();
+		    setupHTML5Events(html5Video, 'video');
+		    playerReady = true;
+    
+		    // IMPORTANT: Start sync check
+		    if (sessionState.isTwoWay || isHost) {
+		        setTimeout(() => startSyncCheck(), 500); // Small delay
+		    }
+		}
+
+		function loadHTML5Audio(url) {
+		    $('html5-audio-container').classList.remove('hidden');
+		    html5Audio = $('html5-audio');
+		    const filename = url.split('/').pop().split('?')[0];
+		    $('audio-title').textContent = decodeURIComponent(filename);
+		    html5Audio.src = url;
+		    html5Audio.load();
+		    setupHTML5Events(html5Audio, 'audio');
+		    playerReady = true;
+    
+		    // IMPORTANT: Start sync check
+		    if (sessionState.isTwoWay || isHost) {
+		        setTimeout(() => startSyncCheck(), 500);
+		    }
+		}
+
+		function loadStreamingVideo(url) {
+		    $('html5-video-container').classList.remove('hidden');
+		    html5Video = $('html5-video');
+    
+		    if (url.includes('.m3u8')) {
+		        if (Hls.isSupported()) {
+		            hls = new Hls();
+		            hls.loadSource(url);
+		            hls.attachMedia(html5Video);
+		            hls.on(Hls.Events.MANIFEST_PARSED, function() {
+		                setupHTML5Events(html5Video, 'video');
+		                playerReady = true;
+                
+		                // IMPORTANT: Start sync check
+		                if (sessionState.isTwoWay || isHost) {
+		                    setTimeout(() => startSyncCheck(), 500);
+		                }
+		            });
+		        } else if (html5Video.canPlayType('application/vnd.apple.mpegurl')) {
+		            html5Video.src = url;
+		            setupHTML5Events(html5Video, 'video');
+		            playerReady = true;
+            
+		            if (sessionState.isTwoWay || isHost) {
+		                setTimeout(() => startSyncCheck(), 500);
+		            }
+		        } else {
+		            showToast('HLS not supported');
+		        }
+		    } else {
+		        html5Video.src = url;
+		        setupHTML5Events(html5Video, 'video');
+		        playerReady = true;
+        
+		        if (sessionState.isTwoWay || isHost) {
+		            setTimeout(() => startSyncCheck(), 500);
+		        }
+		    }
+		}
+       
+        
+        function loadIframe(url) {
+            hideAllPlayers();
+            $('player-iframe').classList.remove('hidden');
+            $('player-iframe').src = url;
+            playerReady = true;
+        }
+        
+        function loadImage(url) {
+            hideAllPlayers();
+            $('player-image').classList.remove('hidden');
+            $('player-image').src = url;
+            playerReady = true;
+        }
+        
+        // ==================== TORRENT WITH WEBTOR EMBED SDK ====================
+		function loadTorrent(magnetLink) {
+		    console.log('🔥 Loading torrent with WebTor Embed SDK...');
+    
+		    if (!magnetLink.startsWith('magnet:')) {
+		        showToast('Invalid magnet link');
+		        return;
+		    }
+    
+		    hideAllPlayers();
+		    $('html5-video-container').classList.remove('hidden');
+    
+		    const videoContainer = $('html5-video-container');
+		    videoContainer.innerHTML = '';
+    
+		    // Show status
+		    torrentInfo.classList.remove('hidden');
+		    torrentInfo.innerHTML = `
+		        <div class="text-blue-400">⏳ Loading WebTor SDK...</div>
+		        <div class="text-xs mt-1">Initializing player...</div>
+		    `;
+    
+		    // Create video element with magnet link
+		    const video = document.createElement('video');
+		    video.id = 'webtor-video';  // Give it an ID
+		    video.controls = true;
+		    video.src = magnetLink;
+		    video.style.width = '100%';
+		    video.style.height = '100%';
+		    video.style.objectFit = 'contain';
+		    video.style.backgroundColor = '#000';
+		    video.setAttribute('poster', 'https://via.placeholder.com/800x450/1e293b/60a5fa?text=Loading+Torrent');
+    
+		    videoContainer.appendChild(video);
+    
+		    // IMPORTANT: Set as current video element
+		    html5Video = video;
+    
+		    // Load WebTor Embed SDK
+		    if (!localState.webtorLoaded) {
+		        const script = document.createElement('script');
+		        script.src = 'https://cdn.jsdelivr.net/npm/@webtor/embed-sdk-js/dist/index.min.js';
+		        script.async = true;
+		        script.charset = 'utf-8';
+        
+		        script.onload = () => {
+		            console.log('✅ WebTor SDK loaded');
+		            localState.webtorLoaded = true;
+            
+		            torrentInfo.innerHTML = `
+		                <div class="text-green-400">✅ WebTor SDK ready</div>
+		                <div class="text-xs mt-1">Processing torrent... (30-90s)</div>
+		            `;
+            
+		            showToast('🔥 WebTor processing torrent...');
+		            playerReady = true;
+            
+		            // Wait for WebTor to replace video element
+		            const checkInterval = setInterval(() => {
+		                const webtorVideo = videoContainer.querySelector('video');
+		                if (webtorVideo && webtorVideo.src && webtorVideo.src.includes('http')) {
+		                    // WebTor created streaming URL
+		                    clearInterval(checkInterval);
+		                    console.log('✅ WebTor player ready');
+                    
+		                    // Update html5Video reference
+		                    html5Video = webtorVideo;
+                    
+		                    // Setup sync events
+		                    setupHTML5Events(webtorVideo, 'video');
+                    
+		                    torrentInfo.innerHTML = `
+		                        <div class="text-green-400">✅ Torrent streaming</div>
+		                        <div class="text-xs mt-1">Powered by WebTor.io</div>
+		                    `;
+                    
+		                    // Start sync check
+		                    if (sessionState.isTwoWay || isHost) {
+		                        startSyncCheck();
+		                    }
+		                }
+		            }, 1000);
+            
+		            // Stop checking after 2 minutes
+		            setTimeout(() => clearInterval(checkInterval), 120000);
+		        };
+        
+		        script.onerror = () => {
+		            console.error('Failed to load WebTor SDK');
+		            torrentInfo.innerHTML = `
+		                <div class="text-red-500">❌ WebTor SDK failed</div>
+		                <div class="text-xs mt-1">Trying fallback...</div>
+		            `;
+		            showToast('⚠️ WebTor SDK failed, trying alternative...');
+		            setTimeout(() => loadTorrentFallback(magnetLink), 2000);
+		        };
+        
+		        document.head.appendChild(script);
+		    } else {
+		        // SDK already loaded
+		        torrentInfo.innerHTML = `
+		            <div class="text-green-400">✅ Processing torrent</div>
+		            <div class="text-xs mt-1">WebTor.io is preparing stream...</div>
+		        `;
+        
+		        showToast('🔥 WebTor processing...');
+		        playerReady = true;
+        
+		        // Wait for WebTor
+		        const checkInterval = setInterval(() => {
+		            const webtorVideo = videoContainer.querySelector('video');
+		            if (webtorVideo && webtorVideo.src && webtorVideo.src.includes('http')) {
+		                clearInterval(checkInterval);
+		                html5Video = webtorVideo;
+		                setupHTML5Events(webtorVideo, 'video');
+                
+		                torrentInfo.innerHTML = `
+		                    <div class="text-green-400">✅ Streaming</div>
+		                    <div class="text-xs mt-1">Powered by WebTor.io</div>
+		                `;
+                
+		                if (sessionState.isTwoWay || isHost) {
+		                    startSyncCheck();
+		                }
+		            }
+		        }, 1000);
+        
+		        setTimeout(() => clearInterval(checkInterval), 120000);
+		    }
+		}
+        
+        
+        // Fallback: iframe embed
+        function loadTorrentFallback(magnetLink) {
+            console.log('Using iframe fallback for torrent');
+            
+            let infoHash = magnetLink;
+            if (magnetLink.startsWith('magnet:')) {
+                const match = magnetLink.match(/btih:([a-f0-9]{40})/i);
+                if (match) {
+                    infoHash = match[1];
+                } else {
+                    showToast('Invalid magnet link');
+                    return;
+                }
+            }
+            
+            hideAllPlayers();
+            $('player-iframe').classList.remove('hidden');
+            $('player-iframe').src = `https://webtor.io/${infoHash}`;
+            
+            torrentInfo.classList.remove('hidden');
+            torrentInfo.innerHTML = `
+                <div class="text-yellow-400">⚠️ Using fallback player</div>
+                <div class="text-xs mt-1">Loading in iframe...</div>
+            `;
+            
+            playerReady = true;
+            showToast('⚠️ Using fallback torrent player');
+        }
+        
+        function setupHTML5Events(mediaElement, type) {
+            mediaElement.addEventListener('play', () => {
+                if (!localState.ignoreNextStateChange && (sessionState.isTwoWay || isHost)) {
+                    sessionState.isPlaying = true;
+                    broadcast({ 
+                        type: 'player-control', 
+                        action: 'play',
+                        time: mediaElement.currentTime,
+                        senderId: myPeerId
+                    });
+                    addSystemMessage(`${localState.username} played`);
+                    localState.lastBroadcastTime = Date.now();
+                }
+                localState.ignoreNextStateChange = false;
+            });
+            
+            mediaElement.addEventListener('pause', () => {
+                if (!localState.ignoreNextStateChange && (sessionState.isTwoWay || isHost)) {
+                    sessionState.isPlaying = false;
+                    broadcast({ 
+                        type: 'player-control', 
+                        action: 'pause',
+                        time: mediaElement.currentTime,
+                        senderId: myPeerId
+                    });
+                    addSystemMessage(`${localState.username} paused`);
+                    localState.lastBroadcastTime = Date.now();
+                }
+                localState.ignoreNextStateChange = false;
+            });
+            
+            mediaElement.addEventListener('seeked', () => {
+                if (!localState.ignoreNextStateChange && (sessionState.isTwoWay || isHost)) {
+                    const now = Date.now();
+                    if (now - localState.lastBroadcastTime >= localState.broadcastCooldown) {
+                        broadcast({ 
+                            type: 'player-control', 
+                            action: 'seek',
+                            time: mediaElement.currentTime,
+                            senderId: myPeerId
+                        });
+                        localState.lastBroadcastTime = now;
+                    }
+                }
+                localState.ignoreNextStateChange = false;
+            });
+        }
+        
+        function onPlayerReady(event) {
+            playerReady = true;
+            console.log('✅ Player ready');
+            if (sessionState.isTwoWay || isHost) startSyncCheck();
+        }
+
+        function onPlayerStateChange(event) {
+            if (localState.ignoreNextStateChange) {
+                localState.ignoreNextStateChange = false;
+                return;
+            }
+            
+            const state = event.data;
+            if (state === prevState) return;
+            
+            const now = Date.now();
+            if (now - localState.lastBroadcastTime < localState.broadcastCooldown) return;
+            
+            prevState = state;
+            localState.lastBroadcastTime = now;
+            
+            if (sessionState.isTwoWay || isHost) {
+                const currentTime = player.getCurrentTime();
+                
+                if (state === YT.PlayerState.PLAYING) {
+                    sessionState.isPlaying = true;
+                    broadcast({ 
+                        type: 'player-control', 
+                        action: 'play',
+                        time: currentTime,
+                        senderId: myPeerId
+                    });
+                    addSystemMessage(`${localState.username} played`);
+                } else if (state === YT.PlayerState.PAUSED) {
+                    sessionState.isPlaying = false;
+                    broadcast({ 
+                        type: 'player-control', 
+                        action: 'pause',
+                        time: currentTime,
+                        senderId: myPeerId
+                    });
+                    addSystemMessage(`${localState.username} paused`);
+                }
+            }
+        }
+        
+        // ==================== PLAYER HELPERS ====================
+		// ==================== PLAYER HELPERS - FIXED ====================
+		function getCurrentPlayer() {
+		    // Check media type and return correct player
+		    if (currentMediaType === 'youtube' && player) {
+		        return player;
+		    }
+    
+		    if (currentMediaType === 'torrent' || currentMediaType === 'video' || currentMediaType === 'stream') {
+		        // For video/torrent/stream, find the actual video element
+		        const videoEl = document.querySelector('#html5-video-container video') || html5Video;
+		        if (videoEl) return videoEl;
+		    }
+    
+		    if (currentMediaType === 'audio' && html5Audio) {
+		        return html5Audio;
+		    }
+    
+		    // Fallback - try to find any video/audio element
+		    const anyVideo = document.querySelector('video');
+		    const anyAudio = document.querySelector('audio');
+    
+		    return anyVideo || anyAudio || null;
+		}
+
+		function getCurrentTime() {
+		    const p = getCurrentPlayer();
+		    if (!p) {
+		        console.log('No player found');
+		        return 0;
+		    }
+    
+		    // YouTube player
+		    if (currentMediaType === 'youtube') {
+		        const time = p.getCurrentTime ? p.getCurrentTime() : 0;
+		        console.log('YouTube time:', time);
+		        return time;
+		    }
+    
+		    // HTML5 video/audio
+		    if (p.currentTime !== undefined) {
+		        console.log('HTML5 time:', p.currentTime);
+		        return p.currentTime || 0;
+		    }
+    
+		    console.log('No time available');
+		    return 0;
+		}
+
+		function seekTo(time) {
+		    const p = getCurrentPlayer();
+		    if (!p) {
+		        console.log('No player for seek');
+		        return;
+		    }
+    
+		    console.log('Seeking to:', time);
+    
+		    if (currentMediaType === 'youtube') {
+		        if (p.seekTo) {
+		            p.seekTo(time, true);
+		        }
+		    } else {
+		        // HTML5 video/audio
+		        if (p.currentTime !== undefined) {
+		            p.currentTime = time;
+		        }
+		    }
+		}
+
+		function play() {
+		    const p = getCurrentPlayer();
+		    if (!p) {
+		        console.log('No player for play');
+		        return;
+		    }
+    
+		    localState.ignoreNextStateChange = true;
+    
+		    if (currentMediaType === 'youtube') {
+		        if (p.playVideo) {
+		            p.playVideo();
+		        }
+		    } else {
+		        // HTML5 video/audio
+		        p.play().catch(e => console.log('Play prevented:', e));
+		    }
+		}
+
+		function pause() {
+		    const p = getCurrentPlayer();
+		    if (!p) {
+		        console.log('No player for pause');
+		        return;
+		    }
+    
+		    localState.ignoreNextStateChange = true;
+    
+		    if (currentMediaType === 'youtube') {
+		        if (p.pauseVideo) {
+		            p.pauseVideo();
+		        }
+		    } else {
+		        // HTML5 video/audio
+		        p.pause();
+		    }
+		}
+		
+        
+        // ==================== SYNC ====================
+        syncButton.addEventListener('click', () => {
+            if (!playerReady) {
+                showToast('No media loaded');
+                return;
+            }
+            
+            syncButton.classList.add('animate-pulse');
+            setTimeout(() => syncButton.classList.remove('animate-pulse'), 1000);
+            
+            if (sessionState.isTwoWay || isHost) {
+                const currentTime = getCurrentTime();
+                const p = getCurrentPlayer();
+                let playing = false;
+                
+                if (currentMediaType === 'youtube' && p) {
+                    playing = p.getPlayerState ? p.getPlayerState() === YT.PlayerState.PLAYING : false;
+                } else if (p) {
+                    playing = !p.paused;
+                }
+                
+                broadcast({
+                    type: 'force-sync',
+                    time: currentTime,
+                    isPlaying: playing,
+                    senderId: myPeerId
+                });
+                
+                showToast('🔄 Synced everyone!');
+                addSystemMessage(`${localState.username} forced sync`);
+            } else {
+                if (localState.hostConnection && localState.hostConnection.open) {
+                    localState.hostConnection.send({ type: 'request-sync' });
+                    showToast('🔄 Syncing...');
+                } else {
+                    showToast('Not connected to host');
+                }
+            }
+        });
+        
+		function startSyncCheck() {
+		    // Clear any existing interval
+		    if (syncCheckInterval) {
+		        clearInterval(syncCheckInterval);
+		    }
+    
+		    console.log('Starting sync check for:', currentMediaType);
+    
+		    syncCheckInterval = setInterval(() => {
+		        const currentTime = getCurrentTime();
+        
+		        // Skip if no valid time
+		        if (!currentTime && currentTime !== 0) {
+		            return;
+		        }
+        
+		        // Check for big jumps (seeking)
+		        if (Math.abs(currentTime - prevTime) > 2) {
+		            const now = Date.now();
+		            if (now - localState.lastBroadcastTime >= localState.broadcastCooldown) {
+		                sessionState.hostTimestamp = currentTime;
+		                broadcast({ 
+		                    type: 'player-control', 
+		                    action: 'seek',
+		                    time: currentTime,
+		                    senderId: myPeerId
+		                });
+		                localState.lastBroadcastTime = now;
+		            }
+		        }
+        
+		        // Update display and state
+		        prevTime = currentTime;
+		        sessionState.hostTimestamp = currentTime;
+		        hostTimeDisplay.textContent = formatTime(currentTime);
+        
+		    }, 1000); // Check every second
+		}
+       
+        function syncToHost(timestamp, isPlaying) {
+            if (!playerReady) return;
+            localState.ignoreNextStateChange = true;
+            seekTo(timestamp);
+            if (isPlaying) play();
+            else pause();
+        }
+        
+        function handlePlayerControl(data) {
+            if (!playerReady) return;
+            if (data.senderId === myPeerId) return;
+            
+            localState.ignoreNextStateChange = true;
+            
+            switch(data.action) {
+                case 'play':
+                    sessionState.isPlaying = true;
+                    prevState = YT.PlayerState.PLAYING;
+                    seekTo(data.time);
+                    play();
+                    break;
+                case 'pause':
+                    sessionState.isPlaying = false;
+                    prevState = YT.PlayerState.PAUSED;
+                    seekTo(data.time);
+                    pause();
+                    break;
+                case 'seek':
+                    seekTo(data.time);
+                    break;
+            }
+            
+            sessionState.hostTimestamp = data.time;
+            hostTimeDisplay.textContent = formatTime(data.time);
+        }
+        
+        // ==================== FILE SHARING ====================
+        attachFileBtn.addEventListener('click', () => fileInputChat.click());
+        
+        fileInputChat.addEventListener('change', async () => {
+            const file = fileInputChat.files[0];
+            if (!file) return;
+            
+            if (file.size > 100 * 1024 * 1024) {
+                showToast('File too large (max 100MB)');
+                return;
+            }
+            
+            fileProgressChat.classList.remove('hidden');
+            fileStatusChat.textContent = 'Reading file...';
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = e.target.result;
+                const chunks = [];
+                const chunkSize = 16384;
+                
+                for (let i = 0; i < data.byteLength; i += chunkSize) {
+                    chunks.push(data.slice(i, i + chunkSize));
+                }
+                
+                const blob = new Blob([data], { type: file.type });
+                const url = URL.createObjectURL(blob);
+                
+                const fileData = { name: file.name, size: file.size, type: file.type, url: url };
+                localState.sharedFiles.set(file.name, fileData);
+                addChatWithFile(localState.username, fileData);
+                
+                broadcast({ type: 'file-start', name: file.name, size: file.size, fileType: file.type, totalChunks: chunks.length, sender: localState.username });
+                
+                let sent = 0;
+                const sendNext = () => {
+                    if (sent >= chunks.length) {
+                        broadcast({ type: 'file-complete', name: file.name, sender: localState.username });
+                        fileProgressChat.classList.add('hidden');
+                        showToast('✅ File shared!');
+                        fileInputChat.value = '';
+                        return;
+                    }
+                    
+                    broadcast({ type: 'file-chunk', index: sent, chunk: Array.from(new Uint8Array(chunks[sent])) });
+                    sent++;
+                    const progress = Math.round((sent / chunks.length) * 100);
+                    fileProgressBarChat.style.width = progress + '%';
+                    fileStatusChat.textContent = `Sharing... ${progress}%`;
+                    setTimeout(sendNext, 10);
+                };
+                sendNext();
+            };
+            reader.readAsArrayBuffer(file);
+        });
+        
+        let receivingFile = null;
+        
+        function handleFileChunk(data) {
+            if (data.type === 'file-start') {
+                receivingFile = { name: data.name, size: data.size, type: data.fileType, sender: data.sender, chunks: new Array(data.totalChunks), received: 0, total: data.totalChunks };
+                addSystemMessage(`${data.sender} is sharing: ${data.name}`);
+            } else if (data.type === 'file-chunk' && receivingFile) {
+                receivingFile.chunks[data.index] = new Uint8Array(data.chunk);
+                receivingFile.received++;
+                
+                if (receivingFile.received === receivingFile.total) {
+                    const totalSize = receivingFile.chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0);
+                    const combined = new Uint8Array(totalSize);
+                    let offset = 0;
+                    receivingFile.chunks.forEach(chunk => { combined.set(chunk, offset); offset += chunk.byteLength; });
+                    
+                    const blob = new Blob([combined], { type: receivingFile.type });
+                    const url = URL.createObjectURL(blob);
+                    const fileData = { name: receivingFile.name, size: receivingFile.size, type: receivingFile.type, url: url };
+                    
+                    localState.sharedFiles.set(receivingFile.name, fileData);
+                    addChatWithFile(receivingFile.sender, fileData);
+                    
+                    if (receivingFile.type.startsWith('video')) createPlayer(url, 'video');
+                    else if (receivingFile.type.startsWith('audio')) createPlayer(url, 'audio');
+                    else if (receivingFile.type.startsWith('image')) createPlayer(url, 'image');
+                    
+                    showToast(`✅ File received: ${receivingFile.name}`);
+                    receivingFile = null;
+                }
+            }
+        }
+        
+        function addChatWithFile(username, fileData) {
+            const div = document.createElement('div');
+            div.className = 'chat-message';
+            const isOwn = username === localState.username;
+            const avatarColor = getAvatarColor(username);
+            const initial = getAvatarInitial(username);
+            const fileIcon = fileData.type.startsWith('video') ? '🎬' : fileData.type.startsWith('audio') ? '🎵' : fileData.type.startsWith('image') ? '🖼️' : '📄';
+            
+            div.innerHTML = `
+                <div class="flex items-start gap-2 ${isOwn ? 'flex-row-reverse' : ''}">
+                    <div class="user-avatar ${avatarColor} flex-shrink-0" style="width: 28px; height: 28px; font-size: 12px;">${initial}</div>
+                    <div class="${isOwn ? 'items-end' : 'items-start'} flex flex-col max-w-[70%]">
+                        <div class="px-3 py-2 rounded-lg ${isOwn ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700'}">
+                            <p class="font-semibold text-xs mb-2">${username}</p>
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-2xl">${fileIcon}</span>
+                                <div><p class="text-sm font-medium">${fileData.name}</p><p class="text-xs opacity-75">${formatBytes(fileData.size)}</p></div>
+                            </div>
+                            <a href="${fileData.url}" download="${fileData.name}" class="file-link inline-flex items-center gap-2 text-sm">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                Download
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            `;
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            sessionState.chat.push({ username, fileData, isFile: true });
+        }
+        
+        // ==================== P2P CONNECTION ====================
+        function initializePeerJS(asHost, isTwoWay = false) {
+            const username = isTwoWay ? usernameInputTwoway.value.trim() : usernameInputInitial.value.trim();
+            if (!username) { setStatus('Enter your name'); return; }
+            
+            localState.username = username;
+            localStorage.setItem('synk_username', username);
+            
+            const btn = isTwoWay ? (asHost ? createTwowayBtn : joinTwowayBtn) : (asHost ? createRoomBtn : joinRoomBtn);
+            setLoading(true, btn);
+            
+            if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
+            connections.clear();
+            
+            clearTimeout(localState.connectionTimeout);
+            localState.connectionTimeout = setTimeout(() => { setStatus('Connection timeout'); setLoading(false, btn); }, 15000);
+
+            peer = new Peer({ config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }] } });
+
+            peer.on('open', id => {
+                clearTimeout(localState.connectionTimeout);
+                myPeerId = id;
+                localState.retryCount = 0;
+                if (!sessionState.users.some(u => u.id === myPeerId)) sessionState.users.push({ id: myPeerId, username: localState.username });
+                if (asHost) setupHost(isTwoWay); else setupGuest(isTwoWay);
+            });
+            
+            peer.on('error', err => { clearTimeout(localState.connectionTimeout); console.error('Peer error:', err); setStatus('Error: ' + err.type); setLoading(false, btn); });
+            peer.on('disconnected', () => { if (!peer.destroyed) setTimeout(() => { if (!peer.destroyed) peer.reconnect(); }, 1000); });
+        }
+
+        function setupHost(isTwoWay = false) {
+            isHost = true; hostId = myPeerId;
+            sessionState.isTwoWay = isTwoWay;
+            sessionState.title = isTwoWay ? sessionTitleTwoway.value.trim() || "2-Way Sync" : sessionTitleInput.value.trim() || "Watch Party";
+            peer.on('connection', conn => { if (sessionState.isTwoWay && connections.size >= 1) { conn.send({ type: 'room-full' }); setTimeout(() => conn.close(), 500); return; } handleConnection(conn); });
+            showView(false); updateUI(); setStatus('');
+        }
+
+		function setupGuest(isTwoWay = false) {
+		    hostId = isTwoWay ? joinTwowayIdInput.value.trim() : joinRoomIdInput.value.trim();
+		    if (!hostId) { 
+		        setStatus('Enter Room ID'); 
+		        setLoading(false, isTwoWay ? joinTwowayBtn : joinRoomBtn); 
+		        return; 
+		    }
+    
+		    const conn = peer.connect(hostId, { 
+		        metadata: { username: localState.username, isTwoWay: isTwoWay },
+		        reliable: true
+		    });
+    
+		    handleConnection(conn);
+		}
+		
+        
+
+		function handleConnection(conn) {
+		    connections.set(conn.peer, conn);
+    
+		    if (!isHost) {
+		        localState.hostConnection = conn;
+		    }
+    
+		    conn.on('open', () => {
+		        console.log('✅ Connected');
+		        if (isHost) {
+		            addAndSyncUser(conn, conn.metadata.username);
+		        } else {
+		            conn.send({ type: 'sync-request' });
+		        }
+		    });
+    
+		    conn.on('data', data => onDataReceived(conn, data));
+		    conn.on('close', () => onUserDisconnect(conn));
+		    conn.on('error', err => onUserDisconnect(conn));
+		}
+		
+	
+        
+		function onDataReceived(conn, data) {
+		    switch(data.type) {
+		        case 'room-full':
+		            alert('Room full');
+		            window.location.reload();
+		            break;
+            
+		        case 'sync-request':
+		            conn.send({ type: 'sync-state', state: sessionState });
+		            break;
+            
+		        case 'sync-state':
+		            sessionState = data.state;
+		            showView(false);
+		            updateUI();
+		            if (sessionState.videoId) {
+		                createPlayer(sessionState.videoId, sessionState.mediaType);
+		            }
+		            break;
+            
+		        case 'user-list-update':
+		            sessionState.users = data.users;
+		            updateUI();
+		            break;
+            
+		        case 'video-change':
+		            sessionState.videoId = data.videoId;
+		            sessionState.mediaType = data.mediaType || 'youtube';
+		            console.log('📺 Loading media type:', sessionState.mediaType);
+		            createPlayer(data.videoId, sessionState.mediaType);
+		            updateUI();
+		            addSystemMessage('Media changed');
+		            break;
+            
+		        case 'player-control':
+		            handlePlayerControl(data);
+		            break;
+            
+		        case 'force-sync':
+		            if (data.senderId !== myPeerId) {
+		                syncToHost(data.time, data.isPlaying);
+		                showToast('🔄 Synced!');
+		            }
+		            break;
+            
+		        case 'request-sync':
+		            if ((sessionState.isTwoWay || isHost) && playerReady) {
+		                const currentTime = getCurrentTime();
+		                const p = getCurrentPlayer();
+		                let playing = false;
+                
+		                if (currentMediaType === 'youtube' && p) {
+		                    playing = p.getPlayerState ? p.getPlayerState() === YT.PlayerState.PLAYING : false;
+		                } else if (p) {
+		                    playing = !p.paused;
+		                }
+                
+		                conn.send({
+		                    type: 'force-sync',
+		                    time: currentTime,
+		                    isPlaying: playing,
+		                    senderId: myPeerId
+		                });
+		            }
+		            break;
+            
+		        case 'chat':
+		            sessionState.chat.push(data.message);
+		            addChat(data.message.username, data.message.text);
+		            break;
+            
+		        case 'system':
+		            sessionState.chat.push(data.message);
+		            addSystemMessage(data.message.text);
+		            break;
+            
+		        case 'file-start':
+		        case 'file-chunk':
+		        case 'file-complete':
+		            handleFileChunk(data);
+		            break;
+		    }
+		}
+		
+        
+        function addAndSyncUser(conn, username) {
+            const newUser = { id: conn.peer, username };
+            if(!sessionState.users.some(u => u.id === newUser.id)) sessionState.users.push(newUser);
+            addSystemMessage(`${username} joined`);
+            conn.send({ type: 'sync-state', state: sessionState });
+            broadcast({ type: 'user-list-update', users: sessionState.users }, conn.peer);
+            updateUI();
+        }
+
+        function onUserDisconnect(conn) {
+            const user = sessionState.users.find(u => u.id === conn.peer);
+            if(user) { addSystemMessage(`${user.username} left`); sessionState.users = sessionState.users.filter(u => u.id !== conn.peer); broadcast({ type: 'user-list-update', users: sessionState.users }); }
+            connections.delete(conn.peer);
+            updateUI();
+        }
+        
+        function broadcast(data, excludePeerId = null) {
+            for (const [peerId, conn] of connections.entries()) { if (peerId !== excludePeerId && conn.open) { try { conn.send(data); } catch(e) {} } }
+        }
+        
+        // ==================== UI ====================
+        function showView(isInitial) {
+            setLoading(false, createRoomBtn); setLoading(false, joinRoomBtn); setLoading(false, createTwowayBtn); setLoading(false, joinTwowayBtn);
+            initialView.classList.toggle('hidden', !isInitial);
+            mainView.classList.toggle('hidden', isInitial);
+        }
+        
+        function updateUI() {
+            userCount.textContent = sessionState.users.length;
+            modalUserList.innerHTML = sessionState.users.map(user => {
+                const avatarColor = getAvatarColor(user.username);
+                const initial = getAvatarInitial(user.username);
+                const isOnline = user.id === myPeerId || connections.has(user.id);
+                return `<li class="flex items-center gap-3 p-3 rounded-lg ${user.id === myPeerId ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-gray-50 dark:bg-gray-700/50'}">
+                    <div class="user-avatar ${avatarColor}">${initial}</div>
+                    <span class="flex-1 font-medium">${user.username} ${user.id === hostId ? '<span class="text-xs text-yellow-500">(Host)</span>' : ''}</span>
+                    <span class="w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}"></span>
+                </li>`;
+            }).join('');
+            hostControls.classList.toggle('hidden', !(sessionState.isTwoWay || isHost));
+            twowayBadge.classList.toggle('hidden', !sessionState.isTwoWay);
+            sessionTitleDisplay.textContent = sessionState.title;
+            roomIdDisplay.textContent = hostId;
+        }
+        
+		function addChat(username, text) {
+		    const div = document.createElement('div');
+		    div.className = 'chat-message';
+		    const isOwn = username === localState.username;
+		    const avatarColor = getAvatarColor(username);
+		    const initial = getAvatarInitial(username);
+    
+		    div.innerHTML = `
+		        <div class="flex items-start gap-2 ${isOwn ? 'flex-row-reverse' : ''}">
+		            <div class="user-avatar ${avatarColor} flex-shrink-0" style="width: 28px; height: 28px; font-size: 12px;">${initial}</div>
+		            <div class="${isOwn ? 'items-end' : 'items-start'} flex flex-col">
+		                <div class="px-3 py-2 rounded-lg ${isOwn ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700'}">
+		                    <p class="font-semibold text-xs mb-1">${username}</p>
+		                    <p class="text-sm">${text}</p>
+		                </div>
+		            </div>
+		        </div>
+		    `;
+    
+		    chatMessages.appendChild(div);
+		    chatMessages.scrollTop = chatMessages.scrollHeight;
+		}
+
+		function addSystemMessage(text) {
+		    const div = document.createElement('div');
+		    div.className = 'system-message text-center my-2';
+		    div.innerHTML = `<span class="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs px-3 py-1 rounded-full">${text}</span>`;
+		    chatMessages.appendChild(div);
+		    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+		    const message = { isSystem: true, text };
+		    sessionState.chat.push(message);
+		    if(sessionState.isTwoWay || isHost) broadcast({type: 'system', message});
+		}
+        
+ 
+
+        function loadVideo() {
+            const input = videoUrlInput.value.trim();
+            const mediaTypeSelect = $('media-type-select').value;
+            if (!input) { showToast("Enter URL"); return; }
+            let mediaUrl, mediaType;
+            if (mediaTypeSelect === 'youtube' || (mediaTypeSelect === 'auto' && detectMediaType(input) === 'youtube')) { mediaUrl = extractYouTubeId(input); mediaType = 'youtube'; } else { mediaUrl = input; mediaType = mediaTypeSelect === 'auto' ? detectMediaType(input) : mediaTypeSelect; }
+            if (!mediaUrl) { showToast("Invalid URL"); return; }
+            sessionState.videoId = mediaUrl; sessionState.mediaType = mediaType; sessionState.hostTimestamp = 0; sessionState.isPlaying = false;
+            createPlayer(mediaUrl, mediaType);
+            broadcast({ type: 'video-change', videoId: mediaUrl, mediaType: mediaType });
+            updateUI(); showToast('✅ Loaded!');
+        }
+
+        function sendChatMessage() {
+            const text = chatInput.value.trim();
+            if (!text) return;
+            const message = { username: localState.username, text };
+            addChat(localState.username, text);
+            broadcast({ type: 'chat', message });
+            chatInput.value = '';
+        }
+        
+        function leaveRoom() { if (peer) peer.destroy(); window.location.reload(); }
+        
+        // ==================== EVENT LISTENERS ====================
+        createRoomBtn.addEventListener('click', () => initializePeerJS(true, false));
+        joinRoomBtn.addEventListener('click', () => initializePeerJS(false, false));
+        createTwowayBtn.addEventListener('click', () => initializePeerJS(true, true));
+        joinTwowayBtn.addEventListener('click', () => initializePeerJS(false, true));
+        leaveRoomBtn.addEventListener('click', leaveRoom);
+        loadVideoBtn.addEventListener('click', loadVideo);
+        sendChatBtn.addEventListener('click', sendChatMessage);
+        chatInput.addEventListener('keypress', e => e.key === 'Enter' && sendChatMessage());
+        copyRoomIdBtn.addEventListener('click', () => { navigator.clipboard.writeText(hostId).then(() => showToast('Room ID copied!')); });
+        viewersBtn.addEventListener('click', () => viewersModal.classList.remove('hidden'));
+        closeModalBtn.addEventListener('click', () => viewersModal.classList.add('hidden'));
+        viewersModal.addEventListener('click', (e) => { if (e.target === viewersModal) viewersModal.classList.add('hidden'); });
+        window.addEventListener('beforeunload', () => { if (peer) peer.destroy(); });
+        
+        usernameInputInitial.value = localStorage.getItem('synk_username') || '';
+        usernameInputTwoway.value = localStorage.getItem('synk_username') || '';
+        
+        console.log('✅ SYNK v14.0 Ready - WebTor SDK Integrated!');
+    </script>
+</body>
+</html>
